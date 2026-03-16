@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022, Cenobit Technologies, Inc. http://cenobit.es/
+# Copyright (c) 2020-2025, Cenobit Technologies, Inc. http://cenobit.es/
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,10 +24,13 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-from typing import Type
+from __future__ import annotations
 
-from .site import JSONRPCSite
-from .views import JSONRPCView
+from flask_jsonrpc.site import JSONRPCSite
+from flask_jsonrpc.views import JSONRPCView
 
-default_jsonrpc_site: Type[JSONRPCSite] = JSONRPCSite
-default_jsonrpc_site_api: Type[JSONRPCView] = JSONRPCView
+default_jsonrpc_site: type[JSONRPCSite] = JSONRPCSite
+"""type[flask_jsonrpc.site.JSONRPCSite]: Default JSON-RPC site class."""
+
+default_jsonrpc_site_api: type[JSONRPCView] = JSONRPCView
+"""type[flask_jsonrpc.views.JSONRPCView]: Default JSON-RPC site API class."""

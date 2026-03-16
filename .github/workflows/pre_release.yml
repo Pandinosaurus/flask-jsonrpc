@@ -1,0 +1,224 @@
+name: Build and publish pre release
+
+concurrency: staging
+
+on:
+  push:
+    branches:
+      - master
+      - release/**
+    tags-ignore:
+      - v**
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - run: |
+          uv run --locked --group ci-tests py.test --random-order --count=5 --reruns=5
+      - uses: actions/upload-artifact@v7
+        with:
+          name: test-n-coverage-report
+          path: |
+            .coverage
+            coverage.lcov
+            junit/
+            htmlcov/
+
+  coverage:
+    name: Coverage [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    needs: tests
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: test-n-coverage-report
+      - uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          format: lcov
+          file: coverage.lcov
+          allow-empty: true
+
+  build:
+    name: Build source [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    needs: [coverage]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - run: echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
+      - run: |
+          uv build --out-dir dist-${{ matrix.platform }}-${{ matrix.python-version }}
+      - run: |
+          tar -cvf dist-${{ matrix.platform }}-${{ matrix.python-version }}.tar dist-${{ matrix.platform }}-${{ matrix.python-version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pre-release-build-${{ matrix.platform }}-${{ matrix.python-version }}
+          path: |
+            dist-${{ matrix.platform }}-${{ matrix.python-version }}.tar
+
+  build-mypyc:
+    name: Build using Mypyc source [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    continue-on-error: true
+    needs: [coverage]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - name: Compiles Python modules to C extensions with Mypyc
+        env:
+          SETUPTOOLS_BUILD_ENABLE_MYPYC: 1
+          HATCH_BUILD_HOOK_ENABLE_MYPYC: 0
+        run: |
+          set -e
+          sudo apt install python3-dev
+          uv sync --locked --no-dev --no-default-groups --group cbuild
+          uv run setup.py bdist_wheel --dist-dir mypyc-dist-${{ matrix.platform }}-${{ matrix.python-version }}
+          # TODO: Uncomment the following line to use hatch instead of setup.py
+          # uv build --wheel --out-dir mypyc-dist-${{ matrix.platform }}-${{ matrix.python-version }}
+      - run: |
+          tar -cvf mypyc-dist-${{ matrix.platform }}-${{ matrix.python-version }}.tar mypyc-dist-${{ matrix.platform }}-${{ matrix.python-version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pre-release-cbuild-${{ matrix.platform }}-${{ matrix.python-version }}
+          path: |
+            mypyc-dist-${{ matrix.platform }}-${{ matrix.python-version }}.tar
+
+  build-wheels:
+    name: Build wheels [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    needs: [coverage]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-15-intel  # intel
+          - macos-latest  # apple silicon
+          - windows-latest
+          - windows-11-arm
+        python-version: ["3.14"]
+        exclude:
+          - platform: windows-11-arm
+            python-version: "3.10"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - name: Prepare build
+        run: |
+          uv venv --clear
+          uv pip install tomlkit==0.13.3 'tomli==2.2.1;python_version<"3.11"'
+          uv run bin/cibw-before-build.py
+      - uses: pypa/cibuildwheel@v3.4.0
+        with:
+          package-dir: .
+          output-dir: wheelhouse
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pre-release-cibw-wheels-${{ matrix.platform }}-${{ matrix.python-version }}
+          path: ./wheelhouse/*.whl
+
+  publish-testpypi:
+    name: Publish to TestPyPI [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    needs: [build, build-wheels]
+    runs-on: ${{ matrix.platform }}
+    environment: staging
+    permissions:
+      contents: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: pre-release-build-${{ matrix.platform }}-${{ matrix.python-version }}
+      - uses: actions/download-artifact@v8
+        with:
+          path: pre-release-cibw-wheels
+          pattern: pre-release-cibw-wheels-*
+          merge-multiple: true
+      - name: Build source and wheel distributions to version ${{ github.ref_name }}
+        run: |
+          tar -xvf dist-${{ matrix.platform }}-${{ matrix.python-version }}.tar
+          mv pre-release-cibw-wheels/* dist-${{ matrix.platform }}-${{ matrix.python-version }}/
+          uv tool run twine check --strict dist-${{ matrix.platform }}-${{ matrix.python-version }}/*
+      - name: Publish distribution to TestPyPI
+        continue-on-error: true
+        uses: pypa/gh-action-pypi-publish@v1.13.0
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist-${{ matrix.platform }}-${{ matrix.python-version }}/
+          skip-existing: true

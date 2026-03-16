@@ -1,4 +1,4 @@
-.PHONY: all clean test test-release release publish-test publish env
+.PHONY: all clean style typing test test-dev test-cov-unit test-examples test-release release env uv-lock
 
 VIRTUALENV_EXISTS := $(shell [ -d .venv ] && echo 1 || echo 0)
 
@@ -6,34 +6,67 @@ all: clean test
 	@python -c "print('OK')"
 
 clean:
-	@python setup.py clean
-	@find . -name "*.pyc" | xargs rm -rf
-	@find . -name "__pycache__" | xargs rm -rf
-	@find . -name ".coverage" | xargs rm -rf
-	@rm -rf .coverage .eggs/ .mypy_cache/ .pytest_cache/ .tox/ src/Flask_JSONRPC.egg-info/ htmlcov/ build/ dist/
+	@find {src,examples,tests} -regex ".*\.\(so\|pyc\)" | xargs rm -rf
+	@find {src,examples,tests} -name "__pycache__" -o -name ".coverage" -o -name "junit" -o -name "coverage.lcov" -o -name "htmlcov" -o -name ".tox"  -o -name ".pytest_cache" -o -name ".ruff_cache"  -o -name ".pkg" -o -name ".tmp" -o -name "*.so" | xargs rm -rf
+	@rm -rf .coverage coverage.* .eggs/ .mypy_cache/ .pytype/ .ruff_cache/ .pytest_cache/ .tox/ src/*.egg-info/ htmlcov/ junit/ htmldoc/ build/ dist/ wheelhouse/ __pycache__/
+
+style:
+	@uv run ruff check .
+	@uv run ruff format .
+
+typing:
+	@uv run mypy --install-types --non-interactive run.py src/
+	@uv run pyright
 
 test: clean
-	@python -m tox
+	@uv run tox run
+
+test-dev:
+	@pytest --numprocesses=0 --count=1 --reruns=0 --parallel-threads=0 --iterations=0 --random-order-seed=1 -x
+
+test-cov-unit:
+	@REPORT="\nUnit Tests:\n"; \
+	ALLOW_ASYNC=$$(python3 -c "import importlib.util; print(1 if importlib.util.find_spec('asgiref') else 0)"); \
+	for TEST_FILE in $(shell find tests/unit -name "test_*.py"); do \
+        TEST_NAME=$$(basename $${TEST_FILE} .py); \
+        PY_MODULE=$$(echo flask_jsonrpc.$${TEST_FILE} | sed 's|/|.|g' | sed 's|.py$$||' | sed 's|test_||' | sed 's|tests.unit.||' | sed 's|.openrpc.app|.openrpc|' | sed 's|.browse.app|.browse|' | sed 's|.async_app|.app|'); \
+		if [ $${ALLOW_ASYNC} -eq 0 ] && [[ $${TEST_FILE} == *"async"* ]]; then \
+			continue; \
+		fi; \
+        pytest --count 1 -n 0 --cov-reset --cov=$${PY_MODULE} $${TEST_FILE} -vv; \
+        if [ $$? -ne 0 ]; then \
+            REPORT+=" + Unit Tests $${TEST_FILE} for $${PY_MODULE} failed (pytest --cov-reset --cov-report=html --cov=$${PY_MODULE} $${TEST_FILE} -vv)\n"; \
+		else \
+			REPORT+=" + Unit Tests $${TEST_FILE} for $${PY_MODULE} passed\n"; \
+        fi; \
+    done; \
+	echo $${REPORT}
+
+
+test-examples: clean
+	@find examples/ -name "pyproject.toml" -print0 | xargs -0 -I {} -P 4 uv run tox run -e py,py-async -c {}
 
 test-release: clean test
-	@docker-compose -f docker-compose.test.yml build --build-arg VERSION=$(shell date +%s)
-	@docker-compose -f docker-compose.test.yml up
+	$(shell ./bin/docker-compose-test.sh)
+	$(shell ./bin/docker-compose-it.sh)
 
-release: clean test
-	@python -m pip install --upgrade build
-	@python -m build
+apidoc:
+	sphinx-apidoc -o docs/api src/flask_jsonrpc
 
-publish-test: clean release
-	@python -m pip install --upgrade twine
-	@python -m twine upload --repository testpypi dist/*
-
-publish: clean release
-	@python -m pip install --upgrade twine
-	@python -m twine upload dist/*
+release: test
+	@uv build
+	@uv tool run twine check --strict dist/*
 
 env:
 ifeq ($(VIRTUALENV_EXISTS), 0)
-	@python -m venv .venv
-	@.venv/bin/pip install --upgrade pip setuptools
-	@.venv/bin/pip install -r requirements/local.txt
+	@uv venv --clear
 endif
+	@uv sync --locked
+	@echo "To activate the virtualenv, run: source .venv/bin/activate"
+
+uv-lock:
+	@uv lock -U
+	@for dir in examples/*/; do \
+		echo "Updating lock file for $$dir"; \
+		uv lock -U --directory "$$dir"; \
+	done

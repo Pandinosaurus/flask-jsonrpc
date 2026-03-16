@@ -1,0 +1,41 @@
+name: Pre commit
+
+concurrency:
+  group: pre-commit
+  cancel-in-progress: false
+
+on:
+  pull_request:
+  push:
+    branches: ["release/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: Pre commit [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - uses: actions/cache@v5.0.3
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit|${{ hashFiles('pyproject.toml', '.pre-commit-config.yaml') }}
+      - run: uv run --locked --group pre-commit pre-commit run --show-diff-on-failure --color=always --all-files
+      - uses: pre-commit-ci/lite-action@v1.1.0
+        if: ${{ !cancelled() }}

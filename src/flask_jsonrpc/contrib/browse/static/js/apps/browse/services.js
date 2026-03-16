@@ -3,13 +3,13 @@
 
     angular.module('browse.service', ['ngResource'])
         .constant('urlPrefix', _URL_PREFIX)
-        .constant('serviceUrl', _SERVICE_URL)
+        .constant('serverUrls', _SERVER_URLS)
         .constant('responseExample', {
           'status': 200,
           'headers': {
             'content-type': 'application/json',
             'content-length': '113',
-            'server': 'Werkzeug/0.8.3 Python/2.7.5',
+            'server': 'Werkzeug/3.0.6 Python/3.14.0',
             'date': 'Fri, 15 Nov 2013 20:15:18 GMT',
             'data': {
               'jsonrpc': '2.0',
@@ -73,13 +73,38 @@
                 }
             };
         }])
-        .factory('RPC', ['$http', 'serviceUrl', 'UUID', function($http, serviceUrl, UUID) {
+        .factory('RPCParamParser', [function() {
             return {
-                getValue: function(param) {
+                getValue: function(param, defaultValue = false) {
+                    if (!param.value) {
+                        if (defaultValue) {
+                            if (param.type === 'Object') {
+                                return {};
+                            } else if (param.type === 'Number') {
+                                return 0;
+                            } else if (param.type === 'Boolean') {
+                                return true;
+                            } else if (param.type === 'String') {
+                                return "";
+                            } else if (param.type === 'Array') {
+                                return [];
+                            } else if (param.type === 'Null') {
+                                return null;
+                            }
+                            return "";
+                        }
+                        return param.value;
+                    }
+
                     if (param.type === 'Object') {
-                        return eval('('+ param.value + ')');
+                        try {
+                            return eval('('+ param.value + ')');
+                        } catch (e) {
+                            console.error('Failed to evaluate the object:', param.value);
+                            return param.value;
+                        }
                     } else if (param.type === 'Number') {
-                        if (param.value.indexOf('.') !== -1) {
+                        if (typeof param.value === 'string' && param.value.indexOf('.') !== -1) {
                             return parseFloat(param.value);
                         }
                         return parseInt(param.value);
@@ -88,11 +113,23 @@
                     } else if (param.type === 'String') {
                         return param.value;
                     } else if (param.type === 'Array') {
-                        return eval('(' + param.value + ')');
+                        try {
+                            return eval('(' + param.value + ')');
+                        } catch (e) {
+                            console.error('Failed to evaluate the array:', param.value);
+                            return param.value;
+                        }
                     } else if (param.type === 'Null') {
                         return null;
                     }
                     return param.value;
+                }
+            };
+        }])
+        .factory('RPC', ['$http', '$location', 'serverUrls', 'UUID', 'RPCParamParser', function($http, $location, serverUrls, UUID, RPCParamParser) {
+            return {
+                getValue: function(param, defaultValue) {
+                    return RPCParamParser.getValue(param, defaultValue);
                 },
                 payload: function(module, options) {
                     var payload = {
@@ -117,6 +154,7 @@
                     return payload;
                 },
                 callWithPayload: function(data, options) {
+                    var serviceUrl = serverUrls[data.method];
                     var options = options || {method: 'POST', url: serviceUrl};
                     options.data = data;
                     return $http(options);

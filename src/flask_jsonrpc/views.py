@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022, Cenobit Technologies, Inc. http://cenobit.es/
+# Copyright (c) 2020-2024, Cenobit Technologies, Inc. http://cenobit.es/
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,36 +24,52 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-from typing import TYPE_CHECKING, ClassVar, Optional, Collection
+from __future__ import annotations
 
-from flask import Response, jsonify, current_app, make_response
-from flask.views import View
+import typing as t
 
-from .site import JSONRPC_VERSION_DEFAULT, JSONRPC_DEFAULT_HTTP_HEADERS
-from .exceptions import JSONRPCError
+# Added in version 3.11.
+from typing_extensions import Self
 
-if TYPE_CHECKING:
-    from .site import JSONRPCSite
+from flask import typing as ft, make_response
+from flask.views import MethodView
+
+from flask_jsonrpc.site import JSONRPC_VERSION_DEFAULT, JSONRPC_DEFAULT_HTTP_HEADERS
+from flask_jsonrpc.encoders import jsonify
+from flask_jsonrpc.exceptions import JSONRPCError
+
+if t.TYPE_CHECKING:
+    from flask_jsonrpc.site import JSONRPCSite
 
 
-class JSONRPCView(View):
-    methods: ClassVar[Optional[Collection[str]]] = ['POST']
+class JSONRPCView(MethodView):
+    """JSON-RPC view to handle JSON-RPC requests.
 
-    def __init__(self, jsonrpc_site: 'JSONRPCSite') -> None:
+    Args:
+        jsonrpc_site (flask_jsonrpc.site.JSONRPCSite): The JSON-RPC site instance.
+
+    Attributes:
+        jsonrpc_site (flask_jsonrpc.site.JSONRPCSite): The JSON-RPC site instance.
+    """
+
+    def __init__(self: Self, jsonrpc_site: JSONRPCSite) -> None:
         self.jsonrpc_site = jsonrpc_site
 
-    def dispatch_request(self) -> Response:
+    def post(self: Self) -> ft.ResponseReturnValue:
+        """Handle POST requests for JSON-RPC.
+
+        If the request is successful, returns a JSON response with the result.
+        If there is a JSON-RPC error, returns a JSON response with the error details.
+
+        Returns:
+            flask.typing.ResponseReturnValue: The Flask response object.
+        """
         try:
             response, status_code, headers = self.jsonrpc_site.dispatch_request()
             if status_code == 204:
                 return make_response('', status_code, headers)
             return make_response(jsonify(response), status_code, headers)
         except JSONRPCError as e:
-            current_app.logger.error('jsonrpc error')
-            current_app.logger.exception(e)
-            response = {
-                'id': None,
-                'jsonrpc': JSONRPC_VERSION_DEFAULT,
-                'error': e.jsonrpc_format,
-            }
+            self.jsonrpc_site.logger.info('jsonrpc error', exc_info=e)
+            response = {'id': None, 'jsonrpc': JSONRPC_VERSION_DEFAULT, 'error': e.jsonrpc_format}
             return make_response(jsonify(response), e.status_code, JSONRPC_DEFAULT_HTTP_HEADERS)

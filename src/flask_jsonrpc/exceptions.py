@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022, Cenobit Technologies, Inc. http://cenobit.es/
+# Copyright (c) 2020-2025, Cenobit Technologies, Inc. http://cenobit.es/
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,9 +24,14 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+from __future__ import annotations
+
 import sys
+import typing as t
 import traceback
-from typing import Any, Dict, Optional
+
+# Added in version 3.11.
+from typing_extensions import Self
 
 from flask import current_app
 
@@ -35,54 +40,73 @@ try:
 
     _("You're lazy...")  # this function lazy-loads settings (pragma: no cover)
 except (ImportError, NameError):
-    _ = lambda t, *a, **k: t  # noqa: E731  pylint: disable=C3001
+    _ = lambda t, *a, **k: t  # noqa: E731
 
 
 class JSONRPCError(Exception):
-    """Error class based on the JSON-RPC 2.0 specs
-    https://www.jsonrpc.org/specification
+    """Error class based on the `JSON-RPC 2.0 specs`_.
 
-      message - string
-      code    - number
-      data    - object
+    Args:
+        message (str | None, optional): Error message. Defaults to `None`.
+        code (int | None, optional): Error code. Defaults to `0`.
+        data (typing.Any | None, optional): Additional error data. Defaults to `None`.
+        status_code (int | None, optional): HTTP status code. Defaults to `400`.
 
-      status_code - number    from https://www.jsonrpc.org/specification_v1#a2.2JSON-RPCoverHTTP
-                              JSON-RPC over HTTP Errors section
+    Examples:
+        >>> error = JSONRPCError(
+        ...     message='An error occurred', code=1234, data={'info': 'details'}
+        ... )
+        >>> assert error.jsonrpc_format == {
+        ...     'name': 'JSONRPCError',
+        ...     'code': 1234,
+        ...     'message': 'An error occurred',
+        ...     'data': {'info': 'details'},
+        ... }
+
+    .. _JSON-RPC 2.0 specs:
+        https://www.jsonrpc.org/specification
+    .. _JSON-RPC Errors:
+        https://www.jsonrpc.org/specification_v1#a2.2JSON-RPCoverHTTP
     """
 
+    message: str | None = None
     code: int = 0
-    message: Optional[str] = None
-    data: Optional[Any] = None
+    data: t.Any | None = None  # noqa: ANN401
     status_code: int = 400
 
     def __init__(
-        self,
-        message: Optional[str] = None,
-        code: Optional[int] = None,
-        data: Optional[Any] = None,
-        status_code: Optional[int] = None,
+        self: Self,
+        message: str | None = None,
+        code: int | None = None,
+        data: t.Any | None = None,  # noqa: ANN401
+        status_code: int | None = None,
     ) -> None:
         """Setup the Exception and overwrite the default message"""
-        super().__init__()
-        if message is not None:
-            self.message = message
-        if code is not None:
-            self.code = code
-        if data is not None:
-            self.data = data
-        if status_code is not None:
-            self.status_code = status_code
+        super().__init__(message)
+        self.message = message or self.message
+        self.code = code or self.code
+        self.data = data or self.data
+        self.status_code = status_code or self.status_code
 
     @property
-    def jsonrpc_format(self) -> Dict[str, Any]:
-        """Return the Exception data in a format for JSON-RPC"""
+    def jsonrpc_format(self: Self) -> dict[str, t.Any]:
+        """Return the Exception data in a format for JSON-RPC
 
-        error = {
-            'name': self.__class__.__name__,
-            'code': self.code,
-            'message': self.message,
-            'data': self.data,
-        }
+        Returns:
+            dict[str, typing.Any]: The error data formatted for JSON-RPC
+
+        Examples:
+            >>> error = JSONRPCError(
+            ...     message='An error occurred', code=1234, data={'info': 'details'}
+            ... )
+            >>> assert error.jsonrpc_format == {
+            ...     'name': 'JSONRPCError',
+            ...     'code': 1234,
+            ...     'message': 'An error occurred',
+            ...     'data': {'info': 'details'},
+            ... }
+        """
+        error = {'name': self.__class__.__name__, 'code': self.code, 'message': self.message, 'data': self.data}
 
         # RuntimeError: Working outside of application context.
         # This typically means that you attempted to use functionality that needed
@@ -108,44 +132,106 @@ class ParseError(JSONRPCError):
     An error occurred on the server while parsing the JSON text.
     """
 
-    code = -32700
-    message = _('Parse error')
+    def __init__(
+        self: Self,
+        message: str | None = _('Parse error'),
+        code: int | None = -32700,
+        data: t.Any | None = None,  # noqa: ANN401
+        status_code: int | None = 400,
+    ) -> None:
+        super().__init__(message, code, data, status_code)
 
 
 class InvalidRequestError(JSONRPCError):
     """The JSON sent is not a valid Request object."""
 
-    code = -32600
-    message = _('Invalid Request')
+    def __init__(
+        self: Self,
+        message: str | None = _('Invalid Request'),
+        code: int | None = -32600,
+        data: t.Any | None = None,  # noqa: ANN401
+        status_code: int | None = 400,
+    ) -> None:
+        super().__init__(message, code, data, status_code)
 
 
 class MethodNotFoundError(JSONRPCError):
     """The method does not exist / is not available."""
 
-    code = -32601
-    message = _('Method not found')
+    def __init__(
+        self: Self,
+        message: str | None = _('Method not found'),
+        code: int | None = -32601,
+        data: t.Any | None = None,  # noqa: ANN401
+        status_code: int | None = 400,
+    ) -> None:
+        super().__init__(message, code, data, status_code)
 
 
 class InvalidParamsError(JSONRPCError):
     """Invalid method parameter(s)."""
 
-    code = -32602
-    message = _('Invalid params')
+    def __init__(
+        self: Self,
+        message: str | None = _('Invalid params'),
+        code: int | None = -32602,
+        data: t.Any | None = None,  # noqa: ANN401
+        status_code: int | None = 400,
+    ) -> None:
+        super().__init__(message, code, data, status_code)
 
 
 class InternalError(JSONRPCError):
     """Internal JSON-RPC error."""
 
-    code = -32603
-    message = _('Internal error')
+    def __init__(
+        self: Self,
+        message: str | None = _('Internal error'),
+        code: int | None = -32603,
+        data: t.Any | None = None,  # noqa: ANN401
+        status_code: int | None = 400,
+    ) -> None:
+        super().__init__(message, code, data, status_code)
 
 
 class ServerError(JSONRPCError):
     """Reserved for implementation-defined server-errors.
 
-    code: -32000 to -32099 Server error.
+    Args:
+        message (str | None, optional): Error message. Defaults to 'Server error'.
+        code (int | None, optional): Error code. Defaults to -32000.
+        data (typing.Any | None, optional): Additional error data. Defaults to `None`.
+        status_code (int | None, optional): HTTP status code. Defaults to `500`.
+        original_exception (BaseException | None, optional): The original exception that caused this error.
+            Defaults to `None`.
+
+    Notes:
+        code: -32000 to -32099 Server error.
+
+    Examples:
+        >>> try:
+        ...     1 / 0
+        ... except ZeroDivisionError as e:
+        ...     error = ServerError(original_exception=e)
+        >>> assert error.jsonrpc_format == {
+        ...     'name': 'ServerError',
+        ...     'code': -32000,
+        ...     'message': 'Server error',
+        ...     'data': None,
+        ... }
+        >>> assert isinstance(error.original_exception, ZeroDivisionError)
     """
 
-    code = -32000
-    message = _('Server error')
-    status_code = 500
+    def __init__(
+        self: Self,
+        message: str | None = _('Server error'),
+        code: int | None = -32000,
+        data: t.Any | None = None,  # noqa: ANN401
+        status_code: int | None = 500,
+        original_exception: BaseException | None = None,
+    ) -> None:
+        # The original exception that caused this 500 error. Can be
+        # used by frameworks to provide context when handling
+        # unexpected errors.
+        self.original_exception = original_exception
+        super().__init__(message, code, data, status_code)

@@ -1,4 +1,5 @@
-[![Build Status](https://travis-ci.org/cenobites/flask-jsonrpc.svg?branch=master)](https://travis-ci.org/cenobites/flask-jsonrpc)
+![Release Status](https://github.com/cenobites/flask-jsonrpc/actions/workflows/release.yml/badge.svg)
+![Tests Status](https://github.com/cenobites/flask-jsonrpc/actions/workflows/tests.yml/badge.svg?branch=master)
 [![Coverage Status](https://coveralls.io/repos/github/cenobites/flask-jsonrpc/badge.svg?branch=master)](https://coveralls.io/github/cenobites/flask-jsonrpc?branch=master)
 [![Documentation Status](https://readthedocs.org/projects/flask-jsonrpc/badge/?version=latest)](https://flask-jsonrpc.readthedocs.io/en/latest/?badge=latest)
 # Flask JSON-RPC
@@ -9,12 +10,13 @@ Some reasons you might want to use:
 
 * Simple, powerful, flexible, and pythonic API.
 * Support [JSON-RPC 2.0](https://www.jsonrpc.org/specification "JSON-RPC 2.0") version.
-* Support python 3.6 or later.
+* Support Python 3.10 or later.
+* Experimental support to [Mypyc](https://mypyc.readthedocs.io/en/latest/introduction.html), it compiles Python modules to C extensions.
 * The web browsable API.
 * Run-time type checking functions defined with [PEP 484](https://www.python.org/dev/peps/pep-0484/ "PEP 484") argument (and return) type annotations.
-* Extensive documentation, and great community support.
+* Extensive [documentation](https://flask-jsonrpc.readthedocs.io/en/latest/), and great community support.
 
-There is a live example API for testing purposes, [available here](http://flask-jsonrpc.herokuapp.com/api/browse "Web browsable API").
+There is a live example API for testing purposes, [available here](https://flask-jsonrpc.cenobit.es/api/browse/#/ "Web browsable API").
 
 **Below:** *Screenshot from the browsable API*
 

@@ -44,6 +44,7 @@ htmlcov/
 .nox/
 .coverage
 .coverage.*
+coverage.lcov
 .cache
 nosetests.xml
 coverage.xml
@@ -52,6 +53,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+junit/
 
 # Translations
 *.mo
@@ -109,8 +111,10 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv*
 env/
 venv/
+venv.*
 ENV/
 env.bak/
 venv.bak/
@@ -124,11 +128,15 @@ venv.bak/
 
 # mkdocs documentation
 /site
+htmldoc/
 
 # mypy
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# pytype
+.pytype/
 
 # Pyre type checker
 .pyre/
@@ -139,8 +147,14 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# Ruff
+.ruff_cache/
+
 # VSCode
 .vscode/
+
+# VSCode Dev Containers
+.devcontainer
 
 # Git + *
 .git/
@@ -149,3 +163,4 @@ cython_debug/
 # Docker
 Dockerfile*
 docker-compose.*
+compose.*

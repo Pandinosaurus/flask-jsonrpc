@@ -1,0 +1,166 @@
+name: On update
+
+concurrency:
+  group: development
+  cancel-in-progress: false
+
+on:
+  pull_request:
+    paths-ignore: ["docs/**", "README.md"]
+  push:
+    branches: ["release/**"]
+    paths-ignore: ["docs/**", "README.md"]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit tests [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - name: Run tests in serial
+        run: |
+          uv run tox run -e py,py-async
+
+  parallel-unit-tests:
+    name: Parallel Unit tests [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        python-version: ["3.14t"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - name: Run tests in parallel
+        run: |
+          uv run tox run -e paralleltests
+
+  typing:
+    name: Type checker [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - uses: actions/cache@v5.0.3
+        with:
+          path: ./.mypy_cache
+          key: mypy|${{ hashFiles('pyproject.toml') }}
+      - run: |
+          uv run tox run -e typing
+
+  security:
+    name: Security [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - run: |
+          uv run tox run -e security
+
+  examples-unit-tests:
+    name: Examples | Unit tests [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7.5.0
+        with:
+          enable-cache: true
+          prune-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - run: |
+          find examples/ -name "pyproject.toml" -print0 | xargs -0 -I {} -P 4 uv run tox run -e py,py-async -c {}
+
+  integration-tests:
+    name: Integration tests | Docker [${{ matrix.platform }} | ${{ matrix.python-version }}]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        docker-target-build: ["app", "async"]
+        exclude:
+          - platform: ubuntu-latest
+            python-version: "3.10"
+            docker-target-build: "mypyc"
+          - platform: ubuntu-latest
+            python-version: "3.11"
+            docker-target-build: "mypyc"
+          - platform: ubuntu-latest
+            python-version: "3.12"
+            docker-target-build: "mypyc"
+    steps:
+      - uses: docker/setup-buildx-action@v4.0.0
+      - uses: docker/setup-compose-action@v2.1.0
+      - uses: actions/checkout@v6
+      - run: |
+          bash -c "./bin/docker-compose-it.sh ${{ matrix.docker-target-build }} ${{ matrix.python-version }}"
+
